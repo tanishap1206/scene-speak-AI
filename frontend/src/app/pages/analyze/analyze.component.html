@@ -1,0 +1,321 @@
+
+<div class="container mt-5">
+  <h2 class="text-center mb-3">🎬 SceneSpeak AI</h2>
+  <p class="text-center text-muted">
+    Advanced dialogue analysis for filmmakers and screenwriters
+  </p>
+
+  <!-- Error Alert -->
+  <div class="alert alert-warning alert-dismissible fade show" role="alert" *ngIf="error">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    {{ error }}
+    <button type="button" class="btn-close" (click)="error = null" aria-label="Close"></button>
+  </div>
+
+  <!-- History Button -->
+  <div class="text-end mb-3">
+    <button class="btn btn-sm btn-outline-info" (click)="toggleHistory()" *ngIf="analysisHistory.length > 0">
+      <i class="bi bi-clock-history"></i> History ({{ analysisHistory.length }})
+    </button>
+  </div>
+
+  <!-- History Panel -->
+  <div class="card mb-4" *ngIf="showHistory">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h6 class="mb-0">Analysis History</h6>
+      <button class="btn btn-sm btn-danger" (click)="clearHistory()">Clear All</button>
+    </div>
+    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+      <div class="list-group">
+        <a href="javascript:void(0)" 
+           class="list-group-item list-group-item-action" 
+           *ngFor="let item of analysisHistory; let i = index"
+           (click)="loadFromHistory(i)">
+          <div class="d-flex justify-content-between">
+            <span><strong>Score:</strong> {{ item.score }}/10</span>
+            <small class="text-muted">{{ item.timestamp | date:'short' }}</small>
+          </div>
+          <small class="text-muted">{{ item.sceneMood }}</small>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script/Dialogue Input -->
+  <div class="mb-4">
+    <label for="dialogueTextarea" class="form-label fw-bold">
+      <i class="bi bi-chat-quote"></i> Script / Dialogue
+    </label>
+    <textarea
+      id="dialogueTextarea"
+      class="form-control"
+      rows="8"
+      placeholder="Example format:&#10;JOHN: Hey, how are you doing today?&#10;MARY: I'm doing great, thanks for asking!&#10;JOHN: That's wonderful to hear."
+      [(ngModel)]="dialogueText">
+    </textarea>
+    <small class="text-muted">
+      <i class="bi bi-info-circle"></i> Format: CHARACTER: dialogue (Use character names in CAPS followed by colon)
+    </small>
+  </div>
+
+  <!-- Image Upload Section -->
+  <div class="mb-4">
+    <label for="imageUpload" class="form-label fw-bold">Scene Image (Optional)</label>
+    <div class="input-group">
+      <input
+        type="file"
+        class="form-control"
+        id="imageUpload"
+        accept="image/*"
+        (change)="onImageSelected($event)"
+        [disabled]="loading">
+      <button 
+        class="btn btn-outline-secondary" 
+        type="button"
+        *ngIf="selectedImage"
+        (click)="removeImage()">
+        Remove
+      </button>
+    </div>
+    <small class="text-muted">Upload a scene image to enhance analysis accuracy</small>
+  </div>
+
+  <!-- Image Preview -->
+  <div class="mb-4" *ngIf="imagePreview">
+    <div class="card">
+      <div class="card-body text-center">
+        <h6 class="card-title">Scene Preview</h6>
+        <img [src]="imagePreview" alt="Scene preview" class="img-fluid" style="max-height: 300px; object-fit: contain;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Analyze Button -->
+  <div class="text-center mb-4">
+    <button 
+      class="btn btn-primary btn-lg px-5" 
+      (click)="analyze()" 
+      [disabled]="loading || (!dialogueText.trim() && !selectedImage)">
+      <span *ngIf="loading" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+      <i class="bi bi-magic" *ngIf="!loading"></i>
+      {{ loading ? 'Analyzing...' : 'Analyze Scene' }}
+    </button>
+    <button 
+      class="btn btn-outline-secondary btn-lg ms-2" 
+      (click)="reset()"
+      *ngIf="result || dialogueText || selectedImage">
+      <i class="bi bi-arrow-counterclockwise"></i> Reset
+    </button>
+  </div>
+
+  <!-- Results Section -->
+  <div *ngIf="result" class="mt-5 results-section">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4><i class="bi bi-clipboard-data"></i> Analysis Results</h4>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-success" (click)="exportResults('json')" title="Export as JSON">
+          <i class="bi bi-file-earmark-code"></i> JSON
+        </button>
+        <button class="btn btn-sm btn-info" (click)="exportResults('txt')" title="Export as Text">
+          <i class="bi bi-file-earmark-text"></i> TXT
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Stats Row -->
+    <div class="row mb-4">
+      <div class="col-md-3 col-6 mb-3">
+        <div class="stat-card text-center p-3">
+          <i class="bi bi-clock display-6 text-primary"></i>
+          <h6 class="mt-2 mb-0">Duration</h6>
+          <h4 class="mb-0">{{ result.estimatedDuration }}</h4>
+        </div>
+      </div>
+      <div class="col-md-3 col-6 mb-3">
+        <div class="stat-card text-center p-3">
+          <i class="bi bi-heart display-6 text-danger"></i>
+          <h6 class="mt-2 mb-0">Scene Mood</h6>
+          <p class="mb-0 small"><strong>{{ result.sceneMood }}</strong></p>
+        </div>
+      </div>
+      <div class="col-md-3 col-6 mb-3">
+        <div class="stat-card text-center p-3">
+          <i class="bi bi-people display-6 text-success"></i>
+          <h6 class="mt-2 mb-0">Characters</h6>
+          <h4 class="mb-0">{{ result.characters?.length || 0 }}</h4>
+        </div>
+      </div>
+      <div class="col-md-3 col-6 mb-3">
+        <div class="stat-card text-center p-3">
+          <i class="bi bi-chat-dots display-6 text-warning"></i>
+          <h6 class="mt-2 mb-0">Analysis Type</h6>
+          <p class="mb-0 small">
+            <span *ngIf="result.hasImage && result.hasText">Text + Image</span>
+            <span *ngIf="result.hasText && !result.hasImage">Text Only</span>
+            <span *ngIf="result.hasImage && !result.hasText">Image Only</span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Naturalness Score -->
+      <div class="col-md-6 mb-3">
+        <div class="card shadow-sm h-100">
+          <div class="card-body text-center">
+            <h5 class="card-title">Naturalness Score</h5>
+            <h1 class="display-3 text-primary">{{ result.score }}<span class="fs-4 text-muted">/10</span></h1>
+            <div class="progress mt-3" style="height: 20px;">
+              <div 
+                class="progress-bar" 
+                [ngClass]="{
+                  'bg-danger': result.score < 4,
+                  'bg-warning': result.score >= 4 && result.score < 7,
+                  'bg-success': result.score >= 7
+                }"
+                [style.width.%]="result.score * 10">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risk Level -->
+      <div class="col-md-6 mb-3">
+        <div class="card shadow-sm h-100">
+          <div class="card-body text-center">
+            <h5 class="card-title">Risk Level</h5>
+            <h2 class="mt-4">
+              <span 
+                class="badge fs-4 px-4 py-3"
+                [ngClass]="{
+                  'bg-danger': result.risk === 'High',
+                  'bg-warning text-dark': result.risk === 'Medium',
+                  'bg-success': result.risk === 'Low'
+                }">
+                {{ result.risk }}
+              </span>
+            </h2>
+            <p class="text-muted mt-3">
+              <small *ngIf="result.hasImage && result.hasText">
+                ✓ Text + Image analysis
+              </small>
+              <small *ngIf="result.hasText && !result.hasImage">
+                Text-only analysis
+              </small>
+              <small *ngIf="result.hasImage && !result.hasText">
+                Image-only analysis
+              </small>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Issues -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h5 class="card-title">
+          <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+          Issues Detected
+        </h5>
+        <ul class="mb-0">
+          <li *ngFor="let issue of result.issues" class="mb-2">{{ issue }}</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Suggestions -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h5 class="card-title">
+          <i class="bi bi-lightbulb-fill text-success me-2"></i>
+          Suggestions
+        </h5>
+        <ul class="mb-0">
+          <li *ngFor="let s of result.suggestions" class="mb-2">{{ s }}</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Character Analysis -->
+    <div class="card shadow-sm mb-3" *ngIf="result.characters && result.characters.length > 0">
+      <div class="card-body">
+        <h5 class="card-title">
+          <i class="bi bi-person-badge text-primary me-2"></i>
+          Character Analysis
+        </h5>
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Character</th>
+                <th>Lines</th>
+                <th>Avg Length</th>
+                <th>Emotions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let char of result.characters">
+                <td><strong>{{ char.name }}</strong></td>
+                <td>{{ char.lines }}</td>
+                <td>{{ char.averageLength }} chars</td>
+                <td>
+                  <span class="badge bg-info me-1" *ngFor="let emotion of char.emotions">
+                    {{ emotion }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Emotion Analysis -->
+    <div class="card shadow-sm mb-3" *ngIf="result.emotions">
+      <div class="card-body">
+        <h5 class="card-title">
+          <i class="bi bi-emoji-smile text-warning me-2"></i>
+          Emotion Distribution
+        </h5>
+        <div *ngFor="let emotion of ['happy', 'sad', 'angry', 'fear', 'neutral']" class="mb-3">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-capitalize">
+              <i class="bi" 
+                 [ngClass]="{
+                   'bi-emoji-smile-fill': emotion === 'happy',
+                   'bi-emoji-frown-fill': emotion === 'sad',
+                   'bi-emoji-angry-fill': emotion === 'angry',
+                   'bi-emoji-dizzy-fill': emotion === 'fear',
+                   'bi-emoji-neutral-fill': emotion === 'neutral'
+                 }"></i>
+              {{ emotion }}
+            </span>
+            <strong>{{ getEmotionPercentage(emotion) }}%</strong>
+          </div>
+          <div class="progress" style="height: 20px;">
+            <div 
+              class="progress-bar" 
+              [style.width.%]="getEmotionPercentage(emotion)"
+              [style.background-color]="getEmotionColor(emotion)">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alternative Suggestions -->
+    <div class="card shadow-sm mb-3" *ngIf="result.alternativeSuggestions && result.alternativeSuggestions.length > 0">
+      <div class="card-body">
+        <h5 class="card-title">
+          <i class="bi bi-stars text-primary me-2"></i>
+          Pro Tips & Alternatives
+        </h5>
+        <ul class="mb-0">
+          <li *ngFor="let alt of result.alternativeSuggestions" class="mb-2">{{ alt }}</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
